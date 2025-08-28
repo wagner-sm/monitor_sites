@@ -23,13 +23,6 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 
 try:
-    import undetected_chromedriver as uc
-    SELENIUM_AVAILABLE = True
-except ImportError:
-    SELENIUM_AVAILABLE = False
-    logging.warning("Selenium/undetected_chromedriver not available. Some sites may not work properly.")
-
-try:
     import requests
     from requests.adapters import HTTPAdapter
     from urllib3.util.retry import Retry
@@ -212,7 +205,7 @@ class ContentNormalizer:
         """Identifica linhas que são ruído"""
         noise_patterns = [
             r'^[\s\-_=]+$',  # Apenas caracteres de separação
-            r'^\d+$',        # Apenas números
+            r'^\d+$',    # Apenas números
             r'^[^\w\s]+$',   # Apenas símbolos
             r'^(loading|carregando|aguarde)\.{3,}$',  # Mensagens de loading
         ]
@@ -308,65 +301,65 @@ class EmailNotifier:
         return f"""
         <html>
         <head>
-            <meta charset="UTF-8">
-            <style>
-                body {{ font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #f5f5f5; }}
-                .container {{ max-width: 800px; margin: 20px auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }}
-                .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 25px; text-align: center; }}
-                .header h1 {{ margin: 0; font-size: 24px; }}
-                .content {{ padding: 25px; }}
-                .info-card {{ background: #f8f9fa; border-left: 4px solid #007bff; padding: 20px; margin: 15px 0; border-radius: 8px; }}
-                .info-card h3 {{ margin-top: 0; color: #495057; }}
-                .diff-container {{ background: #f1f3f4; border-radius: 8px; padding: 20px; margin: 20px 0; max-height: 500px; overflow-y: auto; }}
-                .diff-content {{ font-family: 'Consolas', 'Monaco', monospace; white-space: pre-wrap; font-size: 13px; line-height: 1.4; }}
-                .stats {{ display: flex; justify-content: space-around; margin: 20px 0; }}
-                .stat {{ text-align: center; padding: 15px; background: #e9ecef; border-radius: 8px; }}
-                .stat-value {{ font-size: 24px; font-weight: bold; color: #007bff; }}
-                .stat-label {{ font-size: 12px; color: #6c757d; text-transform: uppercase; }}
-                .footer {{ background: #6c757d; color: white; padding: 15px; text-align: center; font-size: 14px; }}
-                .url-link {{ color: #007bff; text-decoration: none; word-break: break-all; }}
-                .url-link:hover {{ text-decoration: underline; }}
-            </style>
+        <meta charset="UTF-8">
+        <style>
+        body {{ font-family: 'Segoe UI', Arial, sans-serif; margin: 0; padding: 0; background: #f5f5f5; }}
+        .container {{ max-width: 800px; margin: 20px auto; background: white; border-radius: 12px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1); }}
+        .header {{ background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; padding: 25px; text-align: center; }}
+        .header h1 {{ margin: 0; font-size: 24px; }}
+        .content {{ padding: 25px; }}
+        .info-card {{ background: #f8f9fa; border-left: 4px solid #007bff; padding: 20px; margin: 15px 0; border-radius: 8px; }}
+        .info-card h3 {{ margin-top: 0; color: #495057; }}
+        .diff-container {{ background: #f1f3f4; border-radius: 8px; padding: 20px; margin: 20px 0; max-height: 500px; overflow-y: auto; }}
+        .diff-content {{ font-family: 'Consolas', 'Monaco', monospace; white-space: pre-wrap; font-size: 13px; line-height: 1.4; }}
+        .stats {{ display: flex; justify-content: space-around; margin: 20px 0; }}
+        .stat {{ text-align: center; padding: 15px; background: #e9ecef; border-radius: 8px; }}
+        .stat-value {{ font-size: 24px; font-weight: bold; color: #007bff; }}
+        .stat-label {{ font-size: 12px; color: #6c757d; text-transform: uppercase; }}
+        .footer {{ background: #6c757d; color: white; padding: 15px; text-align: center; font-size: 14px; }}
+        .url-link {{ color: #007bff; text-decoration: none; word-break: break-all; }}
+        .url-link:hover {{ text-decoration: underline; }}
+        </style>
         </head>
         <body>
-            <div class="container">
-                <div class="header">
-                    <h1>🔍 Mudança Detectada no Website</h1>
-                </div>
-                
-                <div class="content">
-                    <div class="info-card">
-                        <h3>📋 Informações da Detecção</h3>
-                        <p><strong>🌐 Site:</strong> <a href="{change.url}" class="url-link" target="_blank">{change.url}</a></p>
-                        <p><strong>📅 Data/Hora:</strong> {detected_at}</p>
-                        <p><strong>🔄 Hash Anterior:</strong> <code>{change.old_hash[:16]}...</code></p>
-                        <p><strong>🆕 Hash Atual:</strong> <code>{change.new_hash[:16]}...</code></p>
-                    </div>
-                    
-                    <div class="stats">
-                        <div class="stat">
-                            <div class="stat-value">{change.change_ratio:.1%}</div>
-                            <div class="stat-label">Intensidade</div>
-                        </div>
-                        <div class="stat">
-                            <div class="stat-value">{'SIM' if change.is_significant else 'NÃO'}</div>
-                            <div class="stat-label">Significativa</div>
-                        </div>
-                    </div>
-                    
-                    <div class="info-card">
-                        <h3>📝 Mudanças Detectadas</h3>
-                        <div class="diff-container">
-                            <div class="diff-content">{display_diff}</div>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="footer">
-                    🤖 Website Monitor - Sistema Automático de Monitoramento<br>
-                    <small>Não responda este e-mail</small>
-                </div>
-            </div>
+        <div class="container">
+        <div class="header">
+        <h1>🔍 Mudança Detectada no Website</h1>
+        </div>
+        
+        <div class="content">
+        <div class="info-card">
+        <h3>📋 Informações da Detecção</h3>
+        <p><strong>🌐 Site:</strong> <a href="{change.url}" class="url-link" target="_blank">{change.url}</a></p>
+        <p><strong>📅 Data/Hora:</strong> {detected_at}</p>
+        <p><strong>🔄 Hash Anterior:</strong> <code>{change.old_hash[:16]}...</code></p>
+        <p><strong>🆕 Hash Atual:</strong> <code>{change.new_hash[:16]}...</code></p>
+        </div>
+        
+        <div class="stats">
+        <div class="stat">
+        <div class="stat-value">{change.change_ratio:.1%}</div>
+        <div class="stat-label">Intensidade</div>
+        </div>
+        <div class="stat">
+        <div class="stat-value">{'SIM' if change.is_significant else 'NÃO'}</div>
+        <div class="stat-label">Significativa</div>
+        </div>
+        </div>
+        
+        <div class="info-card">
+        <h3>📝 Mudanças Detectadas</h3>
+        <div class="diff-container">
+        <div class="diff-content">{display_diff}</div>
+        </div>
+        </div>
+        </div>
+        
+        <div class="footer">
+        🤖 Website Monitor - Sistema Automático de Monitoramento<br>
+        <small>Não responda este e-mail</small>
+        </div>
+        </div>
         </body>
         </html>
         """
@@ -490,47 +483,9 @@ class WebsiteMonitor:
             logging.error(f"Error saving {file_path}: {e}")
     
     def get_page_content(self, url: str) -> MonitorResult:
-        """Obtém conteúdo de uma página"""
+        """Obtém conteúdo de uma página usando apenas requests"""
         start_time = time.time()
         
-        try:
-            # Estratégia 1: Requests (mais rápido)
-            if not self._requires_browser(url):
-                result = self._fetch_with_requests(url)
-                if result.success:
-                    result.response_time = time.time() - start_time
-                    return result
-            
-            # Estratégia 2: Browser (para sites que precisam de JS)
-            if SELENIUM_AVAILABLE:
-                result = self._fetch_with_browser(url)
-                result.response_time = time.time() - start_time
-                return result
-            
-            # Fallback: tentar requests mesmo para sites problemáticos
-            result = self._fetch_with_requests(url)
-            result.response_time = time.time() - start_time
-            return result
-            
-        except Exception as e:
-            logging.error(f"Error fetching {url}: {e}")
-            return MonitorResult(
-                url=url,
-                success=False,
-                error=str(e),
-                response_time=time.time() - start_time
-            )
-    
-    def _requires_browser(self, url: str) -> bool:
-        """Determina se URL precisa de browser"""
-        browser_required_domains = [
-            'urbs.curitiba.pr.gov.br',
-        ]
-        
-        return any(domain in url for domain in browser_required_domains)
-    
-    def _fetch_with_requests(self, url: str) -> MonitorResult:
-        """Busca conteúdo usando requests"""
         try:
             response = self.session.get(
                 url,
@@ -544,60 +499,17 @@ class WebsiteMonitor:
                 success=True,
                 content=response.text,
                 status_code=response.status_code,
-                content_length=len(response.text)
+                content_length=len(response.text),
+                response_time=time.time() - start_time
             )
             
         except requests.RequestException as e:
             return MonitorResult(
                 url=url,
                 success=False,
-                error=str(e)
+                error=str(e),
+                response_time=time.time() - start_time
             )
-    
-    def _fetch_with_browser(self, url: str) -> MonitorResult:
-        """Busca conteúdo usando browser"""
-        if not SELENIUM_AVAILABLE:
-            return MonitorResult(
-                url=url,
-                success=False,
-                error="Selenium not available"
-            )
-        
-        driver = None
-        try:
-            options = uc.ChromeOptions()
-            options.add_argument('--headless')
-            options.add_argument('--no-sandbox')
-            options.add_argument('--disable-dev-shm-usage')
-            options.add_argument('--disable-gpu')
-            
-            driver = uc.Chrome(options=options)
-            driver.set_page_load_timeout(self.config['REQUEST_TIMEOUT'])
-            
-            driver.get(url)
-            time.sleep(5)  # Aguardar carregamento
-            
-            content = driver.page_source
-            
-            return MonitorResult(
-                url=url,
-                success=True,
-                content=content,
-                content_length=len(content)
-            )
-            
-        except Exception as e:
-            return MonitorResult(
-                url=url,
-                success=False,
-                error=str(e)
-            )
-        finally:
-            if driver:
-                try:
-                    driver.quit()
-                except:
-                    pass
     
     def extract_relevant_content(self, url: str, html_content: str) -> str:
         """Extrai conteúdo relevante baseado no tipo de site"""
@@ -629,7 +541,7 @@ class WebsiteMonitor:
             
             # Remover elementos indesejados
             for element in soup(['script', 'style', 'meta', 'link', 'iframe', 
-                               'noscript', 'nav', 'footer', 'header', 'aside']):
+                                'noscript', 'nav', 'footer', 'header', 'aside']):
                 element.decompose()
             
             # Extrair conteúdo principal
