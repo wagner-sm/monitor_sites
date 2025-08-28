@@ -1,6 +1,5 @@
-#!/usr/bin/env python3
 """
-Website Monitor - Versão Melhorada (Sem dependências extras)
+Website Monitor - Versão Simplificada (Apenas Hash)
 Monitor de mudanças em websites com notificações por email
 """
 
@@ -14,7 +13,7 @@ import signal
 import threading
 import time
 from datetime import datetime, timedelta
-from typing import Dict, Optional, Tuple, List
+from typing import Dict, Optional, List
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from pathlib import Path
@@ -74,13 +73,11 @@ class ConfigManager:
         'MAX_WORKERS': 5,
         'MAX_RETRIES': 3,
         'REQUEST_TIMEOUT': 30,
-        'MIN_CONTENT_LENGTH': 100,
-        'SIMILARITY_THRESHOLD': 0.85,
-        'MIN_CHANGE_RATIO': 0.05,
+        'MIN_CONTENT_LENGTH': 50,
         'DELETE_HASH_ON_START': False,
         'RATE_LIMIT_DELAY': 1.0,
         'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-        'EMAIL_RATE_LIMIT': 5,
+        'EMAIL_RATE_LIMIT': 10,
         'LOG_LEVEL': 'INFO'
     }
     
@@ -205,7 +202,7 @@ class ContentNormalizer:
         """Identifica linhas que são ruído"""
         noise_patterns = [
             r'^[\s\-_=]+$',  # Apenas caracteres de separação
-            r'^\d+$',    # Apenas números
+            r'^\d+$',        # Apenas números
             r'^[^\w\s]+$',   # Apenas símbolos
             r'^(loading|carregando|aguarde)\.{3,}$',  # Mensagens de loading
         ]
@@ -223,7 +220,7 @@ class EmailNotifier:
     def __init__(self, config: Dict):
         self.config = config
         self.email_count = 0
-        self.max_emails = config.get('EMAIL_RATE_LIMIT', 5)
+        self.max_emails = config.get('EMAIL_RATE_LIMIT', 10)
         self.last_email_time = {}
         self.min_email_interval = timedelta(minutes=5)
     
@@ -338,11 +335,11 @@ class EmailNotifier:
         
         <div class="stats">
         <div class="stat">
-        <div class="stat-value">{change.change_ratio:.1%}</div>
-        <div class="stat-label">Intensidade</div>
+        <div class="stat-value">HASH MUDOU</div>
+        <div class="stat-label">Status</div>
         </div>
         <div class="stat">
-        <div class="stat-value">{'SIM' if change.is_significant else 'NÃO'}</div>
+        <div class="stat-value">SIM</div>
         <div class="stat-label">Significativa</div>
         </div>
         </div>
@@ -356,7 +353,7 @@ class EmailNotifier:
         </div>
         
         <div class="footer">
-        🤖 Website Monitor - Sistema Automático de Monitoramento<br>
+        🤖 Website Monitor - Sistema Simplificado (Hash Only)<br>
         <small>Não responda este e-mail</small>
         </div>
         </div>
@@ -366,7 +363,7 @@ class EmailNotifier:
 
 
 class WebsiteMonitor:
-    """Monitor de websites melhorado"""
+    """Monitor de websites simplificado - apenas hash"""
     
     def __init__(self, config: Dict):
         self.config = config
@@ -483,7 +480,7 @@ class WebsiteMonitor:
             logging.error(f"Error saving {file_path}: {e}")
     
     def get_page_content(self, url: str) -> MonitorResult:
-        """Obtém conteúdo de uma página usando apenas requests"""
+        """Obtém conteúdo de uma página"""
         start_time = time.time()
         
         try:
@@ -502,7 +499,7 @@ class WebsiteMonitor:
                 content_length=len(response.text),
                 response_time=time.time() - start_time
             )
-            
+        
         except requests.RequestException as e:
             return MonitorResult(
                 url=url,
@@ -526,7 +523,7 @@ class WebsiteMonitor:
             
             # Extração padrão
             return self._extract_standard_content(html_content)
-            
+        
         except Exception as e:
             logging.error(f"Error extracting content from {url}: {e}")
             return ""
@@ -541,7 +538,7 @@ class WebsiteMonitor:
             
             # Remover elementos indesejados
             for element in soup(['script', 'style', 'meta', 'link', 'iframe', 
-                                'noscript', 'nav', 'footer', 'header', 'aside']):
+                               'noscript', 'nav', 'footer', 'header', 'aside']):
                 element.decompose()
             
             # Extrair conteúdo principal
@@ -561,7 +558,7 @@ class WebsiteMonitor:
                     content_parts.append(f"{text} -> {href}")
             
             return self.content_normalizer.normalize('\n'.join(content_parts))
-            
+        
         except Exception as e:
             logging.error(f"Error in standard content extraction: {e}")
             return self._extract_content_regex(html)
@@ -600,7 +597,7 @@ class WebsiteMonitor:
                     results.append(f"{tipo}-{linha}-{href}")
             
             return self.content_normalizer.normalize('\n'.join(results))
-            
+        
         except Exception as e:
             logging.error(f"Error extracting linhas info: {e}")
             return ""
@@ -636,7 +633,7 @@ class WebsiteMonitor:
             gallery_info.append(f"Total de imagens: {len(real_images)}")
             
             return self.content_normalizer.normalize('\n'.join(gallery_info))
-            
+        
         except Exception as e:
             logging.error(f"Error extracting gallery content: {e}")
             return ""
@@ -646,7 +643,7 @@ class WebsiteMonitor:
         return hashlib.sha256(content.encode('utf-8')).hexdigest()
     
     def detect_change(self, url: str, new_content: str) -> Optional[ChangeDetection]:
-        """Detecta mudanças significativas"""
+        """Detecta mudanças usando apenas hash - versão simplificada"""
         if not new_content or len(new_content) < self.config['MIN_CONTENT_LENGTH']:
             return None
         
@@ -661,27 +658,9 @@ class WebsiteMonitor:
             logging.info(f"First check for {url}, storing initial hash")
             return None
         
-        # Sem mudança
-        if new_hash == old_hash:
-            return None
-        
-        # Calcular similaridade
-        similarity = SequenceMatcher(None, old_content, new_content).ratio()
-        change_ratio = 1 - similarity
-        
-        # Verificar se é significativa
-        min_similarity = self.config.get('SIMILARITY_THRESHOLDS', {}).get(url, 
-                                                                          self.config['SIMILARITY_THRESHOLD'])
-        min_change_ratio = self.config.get('MIN_CHANGE_RATIOS', {}).get(url, 
-                                                                        self.config['MIN_CHANGE_RATIO'])
-        
-        is_significant = (
-            similarity < min_similarity and
-            change_ratio > min_change_ratio and
-            abs(len(new_content) - len(old_content)) > 50
-        )
-        
-        if is_significant:
+        # Verificar se houve mudança (apenas hash)
+        if new_hash != old_hash:
+            # Qualquer mudança no hash = mudança significativa
             diff_content = self._generate_diff(old_content, new_content)
             
             # Atualizar dados
@@ -692,16 +671,13 @@ class WebsiteMonitor:
                 url=url,
                 old_hash=old_hash,
                 new_hash=new_hash,
-                change_ratio=change_ratio,
+                change_ratio=1.0,  # Sempre 100% quando hash muda
                 is_significant=True,
                 diff_content=diff_content,
                 timestamp=datetime.now()
             )
         
-        # Mudança não significativa, mas atualizar dados
-        self.last_hashes[url] = new_hash
-        self.last_contents[url] = new_content
-        
+        # Sem mudança
         return None
     
     def _generate_diff(self, old_content: str, new_content: str, max_lines: int = 30) -> str:
@@ -727,14 +703,14 @@ class WebsiteMonitor:
                         diff_lines.append(f"✅ {line}")
             
             return '\n'.join(diff_lines[:100])
-            
+        
         except Exception as e:
             logging.error(f"Error generating diff: {e}")
             return "Erro ao gerar comparação de mudanças"
     
     def monitor_sites(self):
         """Executa monitoramento de todos os sites"""
-        logging.info("🚀 Starting website monitoring...")
+        logging.info("🚀 Starting simplified website monitoring (hash-only)...")
         logging.info(f"📊 Monitoring {len(self.config['URLS'])} sites")
         
         try:
@@ -762,7 +738,7 @@ class WebsiteMonitor:
                                 self.stats['emails_sent'] += 1
                         
                         self.stats['sites_checked'] += 1
-                        
+                    
                     except Exception as e:
                         logging.error(f"Error processing {url}: {e}")
                         self.stats['errors'] += 1
@@ -775,7 +751,7 @@ class WebsiteMonitor:
             
             # Log de estatísticas
             self._log_statistics()
-            
+        
         except KeyboardInterrupt:
             logging.info("⏹️ Monitoring stopped by user")
         except Exception as e:
@@ -805,12 +781,12 @@ class WebsiteMonitor:
             change = self.detect_change(url, relevant_content)
             
             if change:
-                logging.info(f"🔥 Significant change detected in {url} (ratio: {change.change_ratio:.3f})")
+                logging.info(f"🔥 Hash change detected in {url}")
                 return change
             else:
-                logging.info(f"✅ No significant changes in {url}")
+                logging.info(f"✅ No changes in {url}")
                 return None
-                
+        
         except Exception as e:
             logging.error(f"❌ Error monitoring {url}: {e}")
             return None
@@ -852,7 +828,7 @@ def main():
         # Inicializar e executar monitor
         monitor = WebsiteMonitor(config)
         monitor.monitor_sites()
-        
+    
     except (FileNotFoundError, ValueError, KeyError, IOError) as e:
         logging.critical(f"❌ Configuration error: {e}")
         sys.exit(1)
