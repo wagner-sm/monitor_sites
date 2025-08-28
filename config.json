@@ -28,10 +28,10 @@
   "MAX_WORKERS": 5,
   "MIN_CONTENT_LENGTH": 100,
   "SIMILARITY_THRESHOLDS": {
-    "https://www.urbs.curitiba.pr.gov.br/transporte/boletim-de-transportes": 0.98,
+    "https://www.urbs.curitiba.pr.gov.br/transporte/boletim-de-transportes": 0.98
   },
   "MIN_CHANGE_RATIOS": {
-    "https://www.urbs.curitiba.pr.gov.br/transporte/boletim-de-transportes": 0.01,
+    "https://www.urbs.curitiba.pr.gov.br/transporte/boletim-de-transportes": 0.01
   },
   "CHECK_INTERVAL": 3600,
   "DELETE_HASH_ON_START": false,
