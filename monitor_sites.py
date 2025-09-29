@@ -635,12 +635,12 @@ class WebsiteMonitor:
             ]
             
             for element in soup.find_all(True):
-                element_class = ' '.join(element.get('class', [])).lower()
-                element_id = element.get('id', '').lower()
+                element_class = ' '.join(element.get('class') or []).lower()
+                element_id = (element.get('id') or "").lower()
                 
                 # Verificar se contém indicadores dinâmicos
                 if any(indicator in element_class or indicator in element_id 
-                       for indicator in dynamic_indicators):
+                    for indicator in dynamic_indicators):
                     element.decompose()
                     continue
                 
@@ -722,11 +722,11 @@ class WebsiteMonitor:
             for row in rows:
                 cells = row.find_all(['td', 'th'])
                 if len(cells) >= 2:
-                    tipo = cells[0].get_text(strip=True) or 'N/A'
-                    linha = cells[1].get_text(strip=True) or 'N/A'
+                    tipo = (cells[0].get_text(strip=True) if cells[0] else "N/A") or "N/A" 
+                    linha = (cells[1].get_text(strip=True) if cells[1] else "N/A") or "N/A"
                     
                     link_el = row.find('a')
-                    href = link_el.get('href', '') if link_el else ''
+                    href = (link_el.get('href') if link_el and link_el.get('href') else "") or ""
                     
                     results.append(f"{tipo}-{linha}-{href}")
             
