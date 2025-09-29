@@ -1,5 +1,5 @@
 """
-Website Monitor - Versão Simplificada (Apenas Hash)
+Website Monitor - Versão Corrigida (Anti Falsos Positivos)
 Monitor de mudanças em websites com notificações por email
 """
 
@@ -73,12 +73,16 @@ class ConfigManager:
         'MAX_WORKERS': 5,
         'MAX_RETRIES': 3,
         'REQUEST_TIMEOUT': 30,
-        'MIN_CONTENT_LENGTH': 50,
+        'MIN_CONTENT_LENGTH': 100,
+        'MIN_SIMILARITY_THRESHOLD': 0.95,
+        'MIN_SIZE_CHANGE_RATIO': 0.02,
         'DELETE_HASH_ON_START': False,
         'RATE_LIMIT_DELAY': 1.0,
         'USER_AGENT': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
         'EMAIL_RATE_LIMIT': 10,
-        'LOG_LEVEL': 'INFO'
+        'LOG_LEVEL': 'INFO',
+        'NORMALIZE_CASE': True,
+        'SORT_CONTENT_LINES': True
     }
     
     @classmethod
@@ -127,6 +131,13 @@ class ConfigManager:
         for url in config['URLS']:
             if not isinstance(url, str) or not url.startswith(('http://', 'https://')):
                 raise ValueError(f"Invalid URL: {url}")
+        
+        # Validar thresholds
+        if not 0 <= config.get('MIN_SIMILARITY_THRESHOLD', 0.95) <= 1:
+            raise ValueError("MIN_SIMILARITY_THRESHOLD must be between 0 and 1")
+        
+        if not 0 <= config.get('MIN_SIZE_CHANGE_RATIO', 0.02) <= 1:
+            raise ValueError("MIN_SIZE_CHANGE_RATIO must be between 0 and 1")
     
     @classmethod
     def _resolve_paths(cls, config: Dict):
@@ -139,36 +150,65 @@ class ConfigManager:
 
 
 class ContentNormalizer:
-    """Normalizador de conteúdo melhorado"""
+    """Normalizador de conteúdo ultra-robusto para evitar falsos positivos"""
     
-    def __init__(self):
+    def __init__(self, config: Dict):
+        self.config = config
         self.patterns = [
-            # Timestamps e datas
-            (re.compile(r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}\b'), ''),
-            (re.compile(r'\b\d{4}[/-]\d{1,2}[/-]\d{1,2}\b'), ''),
-            (re.compile(r'\b\d{1,2}:\d{2}(:\d{2})?\s*(AM|PM)?\b', re.I), ''),
+            # Timestamps completos e variações
+            (re.compile(r'\b\d{1,2}[/-]\d{1,2}[/-]\d{2,4}(?:\s+\d{1,2}:\d{2}(?::\d{2})?)?\b'), ''),
+            (re.compile(r'\b\d{4}[/-]\d{1,2}[/-]\d{1,2}(?:T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})?)?\b'), ''),
+            (re.compile(r'\b\d{1,2}:\d{2}(?::\d{2})?(?:\s*[AP]M)?\b', re.I), ''),
             
-            # IDs e hashes
-            (re.compile(r'\b\d{8,}\b'), ''),
+            # Timestamps Unix e milissegundos
+            (re.compile(r'\b\d{10,13}\b'), ''),
+            
+            # IDs, hashes e tokens longos
             (re.compile(r'\b[a-fA-F0-9]{16,}\b'), ''),
+            (re.compile(r'\b[A-Z0-9]{20,}\b'), ''),
             
-            # Parâmetros de URL dinâmicos
-            (re.compile(r'[?&](timestamp|t|_t|cache|v|version|sid|sessionid|_|rand)=[^&\s]*'), ''),
+            # Parâmetros de URL dinâmicos (mais completo)
+            (re.compile(r'[?&](_|t|v|ts|cache|rand|random|sid|session|sessionid|token|csrf|nonce|timestamp|version|rev|build|_t|_v)=[^&\s]*', re.I), ''),
             
-            # Espaços múltiplos
-            (re.compile(r'\s+'), ' '),
+            # GUIDs e UUIDs
+            (re.compile(r'\b[a-fA-F0-9]{8}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{4}-[a-fA-F0-9]{12}\b'), ''),
+            
+            # Números de versão dinâmicos
+            (re.compile(r'\bv?\d+\.\d+\.\d+(?:\.\d+)?\b'), ''),
+            
+            # Contadores e visualizações
+            (re.compile(r'\b\d+\s*(?:views?|visualizações|visualizacoes|acessos|clicks?|curtidas?|likes?|shares?|comentários?|comments?)\b', re.I), 'N_COUNT'),
+            (re.compile(r'\b(?:views?|visualizações|visualizacoes|acessos|clicks?):\s*\d+\b', re.I), 'COUNT:N'),
+            
+            # Datas relativas
+            (re.compile(r'\b(?:hoje|ontem|amanhã|yesterday|today|tomorrow|há|ago|\d+\s*(?:segundo|minuto|hora|dia|semana|mes|ano|second|minute|hour|day|week|month|year)s?(?:\s+(?:atrás|ago))?)\b', re.I), 'TIMEREF'),
+            
+            # Scripts inline e dados JSON
+            (re.compile(r'<script[^>]*>.*?</script>', re.DOTALL | re.I), ''),
+            (re.compile(r'<style[^>]*>.*?</style>', re.DOTALL | re.I), ''),
+            
+            # Comentários HTML
+            (re.compile(r'<!--.*?-->', re.DOTALL), ''),
+            
+            # Atributos dinâmicos comuns
+            (re.compile(r'\s(?:data-id|data-key|data-index|data-timestamp|data-token|data-session)="[^"]*"', re.I), ''),
             
             # Números de sessão/token
-            (re.compile(r'token[_-]?\w*[=:]\w+', re.I), ''),
-            (re.compile(r'csrf[_-]?\w*[=:]\w+', re.I), ''),
+            (re.compile(r'(?:token|csrf|session)[_-]?\w*[=:]\w+', re.I), 'TOKEN'),
+            
+            # Espaços múltiplos e tabulações
+            (re.compile(r'\s+'), ' '),
+            
+            # Linhas vazias múltiplas
+            (re.compile(r'\n\s*\n+'), '\n'),
         ]
         
-        # Cache simples para normalização
+        # Cache para performance
         self._cache: Dict[str, str] = {}
         self._cache_max_size = 500
     
     def normalize(self, text: str) -> str:
-        """Normaliza texto removendo elementos dinâmicos"""
+        """Normaliza texto de forma ultra-agressiva"""
         if not text:
             return ""
         
@@ -177,18 +217,36 @@ class ContentNormalizer:
         if text_hash in self._cache:
             return self._cache[text_hash]
         
-        # Aplicar padrões de normalização
+        # Passo 1: Aplicar todos os padrões
         normalized = text
         for pattern, replacement in self.patterns:
             normalized = pattern.sub(replacement, normalized)
         
-        # Limpar e filtrar linhas
+        # Passo 2: Normalizar quebras de linha e espaços
         normalized = normalized.strip()
+        
+        # Passo 3: Filtrar linhas válidas
         lines = []
+        seen_lines = set()  # Evitar duplicatas
+        
         for line in normalized.split('\n'):
             line = line.strip()
-            if len(line) > 5 and not self._is_noise_line(line):
-                lines.append(line)
+            
+            # Ignorar linhas muito curtas ou ruído
+            if len(line) < 5 or self._is_noise_line(line):
+                continue
+            
+            # Normalizar a linha individualmente
+            clean_line = self._normalize_line(line)
+            
+            # Evitar duplicatas
+            if clean_line and clean_line not in seen_lines:
+                seen_lines.add(clean_line)
+                lines.append(clean_line)
+        
+        # Passo 4: Ordenar linhas para ignorar mudanças de ordem (se configurado)
+        if self.config.get('SORT_CONTENT_LINES', True):
+            lines.sort()
         
         result = '\n'.join(lines)
         
@@ -198,17 +256,37 @@ class ContentNormalizer:
         
         return result
     
+    def _normalize_line(self, line: str) -> str:
+        """Normaliza uma linha individual"""
+        # Remover pontuação excessiva
+        line = re.sub(r'[^\w\s\-]', ' ', line)
+        
+        # Normalizar espaços
+        line = re.sub(r'\s+', ' ', line).strip()
+        
+        # Converter para lowercase para ignorar mudanças de capitalização (se configurado)
+        if self.config.get('NORMALIZE_CASE', True):
+            line = line.lower()
+        
+        return line
+    
     def _is_noise_line(self, line: str) -> bool:
         """Identifica linhas que são ruído"""
         noise_patterns = [
-            r'^[\s\-_=]+$',  # Apenas caracteres de separação
-            r'^\d+$',        # Apenas números
-            r'^[^\w\s]+$',   # Apenas símbolos
-            r'^(loading|carregando|aguarde)\.{3,}$',  # Mensagens de loading
+            r'^[\s\-_=•·]+$',  # Apenas caracteres de separação
+            r'^\d+$',          # Apenas números
+            r'^[^\w\s]+$',     # Apenas símbolos
+            r'^(loading|carregando|aguarde|wait|please wait)\.{3,}$',  # Mensagens de loading
+            r'^(página|page|pag)\s*\d+$',  # Números de página
+            r'^(copyright|©|®|™)',  # Informações de copyright
+            r'^(cookie|privacidade|privacy|política|policy)',  # Avisos comuns
+            r'^\s*$',  # Linhas vazias
+            r'^(menu|search|buscar|busca|login|entrar|sair|logout)$',  # Navegação comum
         ]
         
+        line_lower = line.lower()
         for pattern in noise_patterns:
-            if re.match(pattern, line, re.I):
+            if re.match(pattern, line_lower, re.I):
                 return True
         
         return False
@@ -269,7 +347,7 @@ class EmailNotifier:
         msg = MIMEMultipart('alternative')
         msg['From'] = smtp_user
         msg['To'] = ", ".join(self.config["EMAIL_RECIPIENTS"])
-        msg['Subject'] = f"🔍 Mudança Detectada: {change.url}"
+        msg['Subject'] = f"🔔 Mudança Detectada: {change.url}"
         
         # Gerar conteúdo HTML
         html_content = self._generate_html_content(change)
@@ -310,7 +388,7 @@ class EmailNotifier:
         .diff-container {{ background: #f1f3f4; border-radius: 8px; padding: 20px; margin: 20px 0; max-height: 500px; overflow-y: auto; }}
         .diff-content {{ font-family: 'Consolas', 'Monaco', monospace; white-space: pre-wrap; font-size: 13px; line-height: 1.4; }}
         .stats {{ display: flex; justify-content: space-around; margin: 20px 0; }}
-        .stat {{ text-align: center; padding: 15px; background: #e9ecef; border-radius: 8px; }}
+        .stat {{ text-align: center; padding: 15px; background: #e9ecef; border-radius: 8px; flex: 1; margin: 0 5px; }}
         .stat-value {{ font-size: 24px; font-weight: bold; color: #007bff; }}
         .stat-label {{ font-size: 12px; color: #6c757d; text-transform: uppercase; }}
         .footer {{ background: #6c757d; color: white; padding: 15px; text-align: center; font-size: 14px; }}
@@ -321,7 +399,7 @@ class EmailNotifier:
         <body>
         <div class="container">
         <div class="header">
-        <h1>🔍 Mudança Detectada no Website</h1>
+        <h1>🔔 Mudança Significativa Detectada</h1>
         </div>
         
         <div class="content">
@@ -335,17 +413,17 @@ class EmailNotifier:
         
         <div class="stats">
         <div class="stat">
-        <div class="stat-value">HASH MUDOU</div>
-        <div class="stat-label">Status</div>
+        <div class="stat-value">{change.change_ratio:.1%}</div>
+        <div class="stat-label">Diferença</div>
         </div>
         <div class="stat">
-        <div class="stat-value">SIM</div>
+        <div class="stat-value">{'SIM' if change.is_significant else 'NÃO'}</div>
         <div class="stat-label">Significativa</div>
         </div>
         </div>
         
         <div class="info-card">
-        <h3>📝 Mudanças Detectadas</h3>
+        <h3>🔍 Mudanças Detectadas</h3>
         <div class="diff-container">
         <div class="diff-content">{display_diff}</div>
         </div>
@@ -353,7 +431,7 @@ class EmailNotifier:
         </div>
         
         <div class="footer">
-        🤖 Website Monitor - Sistema Simplificado (Hash Only)<br>
+        🤖 Website Monitor - Versão Anti Falsos Positivos<br>
         <small>Não responda este e-mail</small>
         </div>
         </div>
@@ -363,14 +441,14 @@ class EmailNotifier:
 
 
 class WebsiteMonitor:
-    """Monitor de websites simplificado - apenas hash"""
+    """Monitor de websites com detecção avançada de mudanças"""
     
     def __init__(self, config: Dict):
         self.config = config
         self.setup_logging()
         
         # Inicializar componentes
-        self.content_normalizer = ContentNormalizer()
+        self.content_normalizer = ContentNormalizer(config)
         self.email_notifier = EmailNotifier(config)
         
         # Arquivos de dados
@@ -396,6 +474,7 @@ class WebsiteMonitor:
         self.stats = {
             'sites_checked': 0,
             'changes_detected': 0,
+            'false_positives_avoided': 0,
             'emails_sent': 0,
             'errors': 0,
             'start_time': datetime.now()
@@ -529,35 +608,90 @@ class WebsiteMonitor:
             return ""
     
     def _extract_standard_content(self, html: str) -> str:
-        """Extração padrão de conteúdo"""
+        """Extração padrão de conteúdo - versão melhorada"""
         if not BS4_AVAILABLE:
             return self._extract_content_regex(html)
         
         try:
             soup = BeautifulSoup(html, 'html.parser')
             
-            # Remover elementos indesejados
-            for element in soup(['script', 'style', 'meta', 'link', 'iframe', 
-                               'noscript', 'nav', 'footer', 'header', 'aside']):
+            # Remover elementos dinâmicos e irrelevantes (lista expandida)
+            for element in soup([
+                'script', 'style', 'meta', 'link', 'iframe', 'noscript',
+                'nav', 'footer', 'header', 'aside', 'svg', 'canvas',
+                'ins',  # Ads
+                'form',  # Formulários (podem ter tokens CSRF)
+                'button',  # Botões (podem ter IDs dinâmicos)
+            ]):
                 element.decompose()
             
-            # Extrair conteúdo principal
+            # Remover elementos com classes/IDs que indicam conteúdo dinâmico
+            dynamic_indicators = [
+                'ad', 'advertisement', 'banner', 'tracking', 'analytics',
+                'cookie', 'popup', 'modal', 'notification', 'toast',
+                'counter', 'timer', 'clock', 'date', 'time',
+                'social', 'share', 'comment', 'disqus', 'widget',
+                'sidebar', 'related', 'recommended'
+            ]
+            
+            for element in soup.find_all(True):
+                element_class = ' '.join(element.get('class', [])).lower()
+                element_id = element.get('id', '').lower()
+                
+                # Verificar se contém indicadores dinâmicos
+                if any(indicator in element_class or indicator in element_id 
+                       for indicator in dynamic_indicators):
+                    element.decompose()
+                    continue
+                
+                # Remover atributos dinâmicos do elemento
+                for attr in ['data-id', 'data-key', 'data-index', 'data-timestamp', 
+                            'data-token', 'id', 'class', 'style', 'onclick']:
+                    if attr in element.attrs:
+                        del element.attrs[attr]
+            
+            # Extrair conteúdo relevante
             content_parts = []
+            seen_texts = set()  # Evitar duplicatas
             
-            # Extrair textos relevantes
-            for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'p', 'li', 'td', 'th']):
+            # Priorizar elementos semânticos importantes
+            for element in soup.find_all(['h1', 'h2', 'h3', 'h4', 'p', 'li', 'td', 'th', 'article', 'section']):
                 text = element.get_text(strip=True)
-                if text and len(text) > 10:
-                    content_parts.append(text)
+                
+                # Filtros de qualidade
+                if not text or len(text) < 10:
+                    continue
+                
+                # Ignorar textos muito comuns/genéricos
+                if text.lower() in ['menu', 'search', 'buscar', 'entrar', 'login', 'cadastro', 
+                                    'register', 'sign in', 'sign up']:
+                    continue
+                
+                # Evitar duplicatas
+                text_key = text[:100].lower()  # Usar primeiros 100 chars como chave
+                if text_key in seen_texts:
+                    continue
+                
+                seen_texts.add(text_key)
+                content_parts.append(text)
             
-            # Extrair links importantes
+            # Extrair apenas links importantes (não navegação)
             for link in soup.find_all('a', href=True):
                 href = link.get('href', '')
                 text = link.get_text(strip=True)
-                if text and href and len(text) > 5:
-                    content_parts.append(f"{text} -> {href}")
+                
+                # Ignorar links de navegação, âncoras e javascript
+                if (not text or not href or len(text) < 5 or
+                    href.startswith(('#', 'javascript:', 'mailto:')) or
+                    any(nav_word in text.lower() for nav_word in 
+                        ['menu', 'home', 'página', 'próximo', 'anterior', 'next', 'prev', 'voltar', 'back'])):
+                    continue
+                
+                content_parts.append(f"{text} -> {href}")
             
-            return self.content_normalizer.normalize('\n'.join(content_parts))
+            # Juntar e normalizar
+            combined = '\n'.join(content_parts)
+            return self.content_normalizer.normalize(combined)
         
         except Exception as e:
             logging.error(f"Error in standard content extraction: {e}")
@@ -643,42 +777,95 @@ class WebsiteMonitor:
         return hashlib.sha256(content.encode('utf-8')).hexdigest()
     
     def detect_change(self, url: str, new_content: str) -> Optional[ChangeDetection]:
-        """Detecta mudanças usando apenas hash - versão simplificada"""
+        """Detecta mudanças com validação adicional para evitar falsos positivos"""
         if not new_content or len(new_content) < self.config['MIN_CONTENT_LENGTH']:
+            logging.warning(f"⚠️ Content too short for {url}: {len(new_content)} chars")
             return None
         
         new_hash = self.calculate_content_hash(new_content)
         old_hash = self.last_hashes.get(url, "")
         old_content = self.last_contents.get(url, "")
         
-        # Primeira verificação
+        # Primeira verificação - apenas armazenar
         if not old_hash:
             self.last_hashes[url] = new_hash
             self.last_contents[url] = new_content
-            logging.info(f"First check for {url}, storing initial hash")
+            logging.info(f"✓ First check for {url}, storing initial hash")
             return None
         
-        # Verificar se houve mudança (apenas hash)
-        if new_hash != old_hash:
-            # Qualquer mudança no hash = mudança significativa
-            diff_content = self._generate_diff(old_content, new_content)
-            
-            # Atualizar dados
+        # Se hash é idêntico, sem mudança
+        if new_hash == old_hash:
+            logging.debug(f"✓ No hash change for {url}")
+            return None
+        
+        # Hash diferente - verificar se mudança é significativa
+        logging.info(f"⚠️ Hash changed for {url}, validating significance...")
+        
+        # Validação 1: Verificar similaridade de conteúdo
+        similarity = self._calculate_similarity(old_content, new_content)
+        logging.info(f"   📊 Similarity: {similarity:.2%}")
+        
+        # Se similaridade é muito alta, provavelmente é falso positivo
+        similarity_threshold = self.config.get('MIN_SIMILARITY_THRESHOLD', 0.95)
+        if similarity > similarity_threshold:
+            logging.info(f"   → Content too similar ({similarity:.2%} > {similarity_threshold:.2%}), ignoring change")
+            self.stats['false_positives_avoided'] += 1
+            # Atualizar hash mas não notificar
             self.last_hashes[url] = new_hash
             self.last_contents[url] = new_content
-            
-            return ChangeDetection(
-                url=url,
-                old_hash=old_hash,
-                new_hash=new_hash,
-                change_ratio=1.0,  # Sempre 100% quando hash muda
-                is_significant=True,
-                diff_content=diff_content,
-                timestamp=datetime.now()
-            )
+            return None
         
-        # Sem mudança
-        return None
+        # Validação 2: Verificar se conteúdo novo é válido
+        if len(new_content) < len(old_content) * 0.3:
+            logging.warning(f"   → New content is too short (possible error), ignoring")
+            return None
+        
+        # Validação 3: Verificar diferença absoluta de tamanho
+        size_diff = abs(len(new_content) - len(old_content))
+        size_ratio = size_diff / len(old_content) if old_content else 1
+        
+        logging.info(f"   📏 Size change: {size_diff} chars ({size_ratio:.2%})")
+        
+        # Se mudança é menor que threshold do tamanho, pode ser ruído
+        size_threshold = self.config.get('MIN_SIZE_CHANGE_RATIO', 0.02)
+        if size_ratio < size_threshold and similarity > 0.90:
+            logging.info(f"   → Change too small ({size_ratio:.2%} < {size_threshold:.2%}), ignoring")
+            self.stats['false_positives_avoided'] += 1
+            self.last_hashes[url] = new_hash
+            self.last_contents[url] = new_content
+            return None
+        
+        # Mudança é significativa - gerar notificação
+        logging.info(f"   ✅ Significant change confirmed!")
+        
+        diff_content = self._generate_diff(old_content, new_content)
+        
+        # Atualizar dados
+        self.last_hashes[url] = new_hash
+        self.last_contents[url] = new_content
+        
+        return ChangeDetection(
+            url=url,
+            old_hash=old_hash,
+            new_hash=new_hash,
+            change_ratio=1.0 - similarity,
+            is_significant=True,
+            diff_content=diff_content,
+            timestamp=datetime.now()
+        )
+    
+    def _calculate_similarity(self, text1: str, text2: str) -> float:
+        """Calcula similaridade entre dois textos"""
+        if not text1 or not text2:
+            return 0.0
+        
+        try:
+            # Usar SequenceMatcher para calcular similaridade
+            matcher = SequenceMatcher(None, text1, text2)
+            return matcher.ratio()
+        except Exception as e:
+            logging.error(f"Error calculating similarity: {e}")
+            return 0.0
     
     def _generate_diff(self, old_content: str, new_content: str, max_lines: int = 30) -> str:
         """Gera diff entre conteúdos"""
@@ -710,8 +897,10 @@ class WebsiteMonitor:
     
     def monitor_sites(self):
         """Executa monitoramento de todos os sites"""
-        logging.info("🚀 Starting simplified website monitoring (hash-only)...")
+        logging.info("🚀 Starting website monitoring (anti false positives)...")
         logging.info(f"📊 Monitoring {len(self.config['URLS'])} sites")
+        logging.info(f"⚙️  Similarity threshold: {self.config.get('MIN_SIMILARITY_THRESHOLD', 0.95):.2%}")
+        logging.info(f"⚙️  Size change threshold: {self.config.get('MIN_SIZE_CHANGE_RATIO', 0.02):.2%}")
         
         try:
             # Usar ThreadPoolExecutor para paralelização
@@ -753,7 +942,7 @@ class WebsiteMonitor:
             self._log_statistics()
         
         except KeyboardInterrupt:
-            logging.info("⏹️ Monitoring stopped by user")
+            logging.info("ℹ️ Monitoring stopped by user")
         except Exception as e:
             logging.error(f"❌ Monitoring error: {e}")
             self.stats['errors'] += 1
@@ -777,14 +966,16 @@ class WebsiteMonitor:
                 logging.warning(f"⚠️ No relevant content extracted from {url}")
                 return None
             
+            logging.debug(f"   📝 Extracted {len(relevant_content)} chars")
+            
             # Detectar mudanças
             change = self.detect_change(url, relevant_content)
             
             if change:
-                logging.info(f"🔥 Hash change detected in {url}")
+                logging.info(f"🔥 Significant change detected in {url}")
                 return change
             else:
-                logging.info(f"✅ No changes in {url}")
+                logging.info(f"✅ No significant changes in {url}")
                 return None
         
         except Exception as e:
@@ -804,12 +995,16 @@ class WebsiteMonitor:
         """Log de estatísticas da execução"""
         duration = datetime.now() - self.stats['start_time']
         
+        logging.info("")
+        logging.info("=" * 60)
         logging.info("📈 Monitoring Statistics:")
         logging.info(f"   ⏱️  Duration: {duration}")
         logging.info(f"   🌐 Sites checked: {self.stats['sites_checked']}")
-        logging.info(f"   🔥 Changes detected: {self.stats['changes_detected']}")
+        logging.info(f"   🔥 Significant changes detected: {self.stats['changes_detected']}")
+        logging.info(f"   🛡️  False positives avoided: {self.stats['false_positives_avoided']}")
         logging.info(f"   📧 Emails sent: {self.stats['emails_sent']}")
         logging.info(f"   ❌ Errors: {self.stats['errors']}")
+        logging.info("=" * 60)
 
 
 def main():
@@ -833,7 +1028,7 @@ def main():
         logging.critical(f"❌ Configuration error: {e}")
         sys.exit(1)
     except KeyboardInterrupt:
-        logging.info("⏹️ Monitoring stopped by user")
+        logging.info("ℹ️ Monitoring stopped by user")
     except Exception as e:
         logging.critical(f"❌ Unexpected error: {e}")
         sys.exit(1)
