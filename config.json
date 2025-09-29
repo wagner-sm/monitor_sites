@@ -23,10 +23,14 @@
     "wsmmetal@outlook.com"
   ],
   "HASH_FILE": "C:\\temp\\monitor_sites\\hashes.json",  
+  "CONTENT_FILE": "C:\\temp\\monitor_sites\\contents.json",
+  "LOG_FILE": "C:\\temp\\monitor_sites\\monitor.log",
   "MAX_RETRIES": 3,
   "MAX_WORKERS": 5,
   "MIN_CONTENT_LENGTH": 100,
   "CHECK_INTERVAL": 3600,
   "DELETE_HASH_ON_START": false,
-  "SPECIAL_DOMAINS": ["portfolio"]
+  "SPECIAL_DOMAINS": ["portfolio"],
+  "SITE_SELECTORS": { "urbs.curitiba.pr.gov.br/transporte/boletim-de-transportes": "main, .page-content, #content"}, 
+  "LOG_LEVEL": "DEBUG"
 }
