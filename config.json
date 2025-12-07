@@ -1,0 +1,30 @@
+{
+  "URLS": [
+        "https://cartaometrocard.com.br/sistema-metropolitano/alteracao-em-linhas/",        
+        "https://www.eueanatureza.com.br/ensaios_modelos",      
+        "https://fotografiaparameninas.alboompro.com/portfolio/trabalhos",
+        "https://zanettafotografia.alboompro.com/portfolio/nu-artistico-18",
+        "https://delucafotografo.alboompro.com/portfolio",
+        "https://www.estudioadryan.com.br/portfolio/ensaio-sensual",
+        "https://www.rafaelohanafotografia.com/portfolio2/trabalhos",        
+        "https://www.achandrafazensaiosensual.com.br/portfolio",
+        "https://www.rodrigomattjie.com.br/portfolio",
+        "https://www.atmospheraensaios.com.br/portfolio",        
+        "https://rwstudio-s.alboompro.com/portfolio",        
+        "https://www.rektmag.net/",
+		"https://www.marcelomartinsfotografia.com.br/portfolio",
+		"https://gataegatas.alboompro.com/portfolio",
+		"https://www.flormeninna.com/portfolio"
+  ],
+  "EMAIL_RECIPIENTS": [
+    "wsmmetal@outlook.com"
+  ],
+  "HASH_FILE": "data/hashes.json",  
+  "CONTENT_FILE":"data/last_contents.json",
+  "MAX_RETRIES": 3,
+  "MAX_WORKERS": 5,
+  "MIN_CONTENT_LENGTH": 100,
+  "CHECK_INTERVAL": 3600,
+  "DELETE_HASH_ON_START": false,
+  "SPECIAL_DOMAINS": ["portfolio"]
+}
