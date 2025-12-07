@@ -1,0 +1,113 @@
+name: Website Monitor
+
+on:
+  schedule:
+    - cron: "*/30 * * * *"  # A cada 30 minutos
+  workflow_dispatch:  # Permite execução manual
+
+permissions:
+  contents: write
+
+jobs:
+  monitor:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          persist-credentials: true
+          fetch-depth: 0
+      
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: 'pip'  # Cache de dependências para velocidade
+      
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install -r requirements.txt
+      
+      - name: Create data directory
+        run: |
+          mkdir -p data
+          echo "Data directory created/verified"
+      
+      - name: Run Website Monitor
+        env:
+          MONITOR_CONFIG_PATH: "config.json"
+          GMAIL_USER: ${{ secrets.GMAIL_USER }}
+          GMAIL_APP_PASSWORD: ${{ secrets.GMAIL_APP_PASSWORD }}
+        run: |
+          echo "Starting website monitor..."
+          python monitor_sites.py
+          EXIT_CODE=$?
+          echo "Monitor finished with exit code: $EXIT_CODE"
+          
+          # Listar arquivos criados
+          echo "Files in data directory:"
+          ls -lah data/ || echo "No data directory found"
+          
+          # DEBUG: Verificar conteúdo dos arquivos
+          echo ""
+          echo "=== DEBUG: Content of hashes.json ==="
+          if [ -f data/hashes.json ]; then
+            head -c 500 data/hashes.json
+            echo ""
+            echo "File size: $(wc -c < data/hashes.json) bytes"
+          fi
+          
+          echo ""
+          echo "=== DEBUG: Content of last_contents.json ==="
+          if [ -f data/last_contents.json ]; then
+            head -c 500 data/last_contents.json
+            echo ""
+            echo "File size: $(wc -c < data/last_contents.json) bytes"
+            echo "Is it just '{}'? $(cat data/last_contents.json)"
+          fi
+          
+          # Continuar mesmo se houver erro (para fazer commit dos arquivos criados)
+          exit 0
+      
+      - name: Check for changes
+        id: check_changes
+        run: |
+          echo "=== Checking git status ==="
+          git status
+          
+          echo ""
+          echo "=== Files in data directory ==="
+          ls -lah data/
+          
+          echo ""
+          echo "=== Adding files to git ==="
+          git add -A
+          
+          echo ""
+          echo "=== Git diff --cached ==="
+          git diff --cached --stat
+          
+          if git diff --cached --quiet; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "? No changes detected to commit"
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "? Changes detected:"
+            git diff --cached --name-only
+          fi
+      
+      - name: Commit and push changes
+        if: steps.check_changes.outputs.has_changes == 'true'
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          git commit -m "?? Auto-update: hashes and content [$(date -u +'%Y-%m-%d %H:%M:%S UTC')]"
+          git push
+          echo "? Changes committed and pushed successfully"
+      
+      - name: No changes to commit
+        if: steps.check_changes.outputs.has_changes == 'false'
+        run: |
+          echo "?? No changes to commit - all sites unchanged"
