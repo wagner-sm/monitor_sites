@@ -14,7 +14,8 @@
         "https://www.rektmag.net/",
 		"https://www.marcelomartinsfotografia.com.br/portfolio",
 		"https://gataegatas.alboompro.com/portfolio",
-		"https://www.flormeninna.com/portfolio"
+		"https://www.flormeninna.com/portfolio",
+	    "https://illuminateboudoir.com/blog"
   ],
   "EMAIL_RECIPIENTS": [
     "wsmmetal@outlook.com"
@@ -27,4 +28,5 @@
   "CHECK_INTERVAL": 3600,
   "DELETE_HASH_ON_START": false,
   "SPECIAL_DOMAINS": ["portfolio"]
+
 }
