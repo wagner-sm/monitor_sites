@@ -1,5 +1,6 @@
 {
   "URLS": [
+	    "https://www.urbs.curitiba.pr.gov.br/transporte/boletim-de-transportes",
         "https://cartaometrocard.com.br/sistema-metropolitano/alteracao-em-linhas/",        
         "https://www.eueanatureza.com.br/ensaios_modelos",      
         "https://fotografiaparameninas.alboompro.com/portfolio/trabalhos",
@@ -30,3 +31,4 @@
   "SPECIAL_DOMAINS": ["portfolio"]
 
 }
+
