@@ -20,6 +20,10 @@ from pathlib import Path
 import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
+from datetime import datetime, timedelta
+from zoneinfo import ZoneInfo
+
+LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 
 try:
     import requests
@@ -309,7 +313,7 @@ class EmailNotifier:
             return False
         
         last_time = self.last_email_time.get(url)
-        if last_time and datetime.now() - last_time < self.min_email_interval:
+        if last_time and datetime.now(LOCAL_TZ) - last_time < self.min_email_interval:
             logging.info(f"Email cooldown active for {url}")
             return False
         
@@ -324,11 +328,11 @@ class EmailNotifier:
             success = self._send_email(change)
             if success:
                 self.email_count += 1
-                self.last_email_time[change.url] = datetime.now()
-                logging.info(f"✅ Email sent for {change.url}")
+                self.last_email_time[change.url] = datetime.now(LOCAL_TZ)
+                logging.info(f"? Email sent for {change.url}")
             return success
         except Exception as e:
-            logging.error(f"❌ Email error for {change.url}: {e}")
+            logging.error(f"? Email error for {change.url}: {e}")
             return False
     
     def _send_email(self, change: ChangeDetection) -> bool:
@@ -347,7 +351,7 @@ class EmailNotifier:
         msg = MIMEMultipart('alternative')
         msg['From'] = smtp_user
         msg['To'] = ", ".join(self.config["EMAIL_RECIPIENTS"])
-        msg['Subject'] = f"🔔 Mudança Detectada: {change.url}"
+        msg['Subject'] = f"?? Mudança Detectada: {change.url}"
         
         # Gerar conteúdo HTML
         html_content = self._generate_html_content(change)
@@ -399,16 +403,16 @@ class EmailNotifier:
         <body>
         <div class="container">
         <div class="header">
-        <h1>🔔 Mudança Significativa Detectada</h1>
+        <h1>?? Mudança Significativa Detectada</h1>
         </div>
         
         <div class="content">
         <div class="info-card">
-        <h3>📋 Informações da Detecção</h3>
-        <p><strong>🌐 Site:</strong> <a href="{change.url}" class="url-link" target="_blank">{change.url}</a></p>
-        <p><strong>📅 Data/Hora:</strong> {detected_at}</p>
-        <p><strong>🔄 Hash Anterior:</strong> <code>{change.old_hash[:16]}...</code></p>
-        <p><strong>🆕 Hash Atual:</strong> <code>{change.new_hash[:16]}...</code></p>
+        <h3>?? Informações da Detecção</h3>
+        <p><strong>?? Site:</strong> <a href="{change.url}" class="url-link" target="_blank">{change.url}</a></p>
+        <p><strong>?? Data/Hora:</strong> {detected_at}</p>
+        <p><strong>?? Hash Anterior:</strong> <code>{change.old_hash[:16]}...</code></p>
+        <p><strong>?? Hash Atual:</strong> <code>{change.new_hash[:16]}...</code></p>
         </div>
         
         <div class="stats">
@@ -423,7 +427,7 @@ class EmailNotifier:
         </div>
         
         <div class="info-card">
-        <h3>🔍 Mudanças Detectadas</h3>
+        <h3>?? Mudanças Detectadas</h3>
         <div class="diff-container">
         <div class="diff-content">{display_diff}</div>
         </div>
@@ -431,7 +435,7 @@ class EmailNotifier:
         </div>
         
         <div class="footer">
-        🤖 Website Monitor - Versão Anti Falsos Positivos<br>
+        ?? Website Monitor - Versão Anti Falsos Positivos<br>
         <small>Não responda este e-mail</small>
         </div>
         </div>
@@ -477,7 +481,7 @@ class WebsiteMonitor:
             'false_positives_avoided': 0,
             'emails_sent': 0,
             'errors': 0,
-            'start_time': datetime.now()
+            'start_time': datetime.now(LOCAL_TZ)
         }
     
     def setup_logging(self):
@@ -557,17 +561,17 @@ class WebsiteMonitor:
             file_path.parent.mkdir(parents=True, exist_ok=True)
             
             # DEBUG: Ver o que está sendo salvo
-            logging.info(f"🔍 Attempting to save {file_path.name}: {len(data)} entries")
+            logging.info(f"?? Attempting to save {file_path.name}: {len(data)} entries")
             
             if not data:
-                logging.warning(f"⚠️ Data is empty for {file_path.name}!")
+                logging.warning(f"?? Data is empty for {file_path.name}!")
             
             # Tentar serializar primeiro (para detectar erros antes de escrever)
             try:
                 json_str = json.dumps(data, indent=2, ensure_ascii=False)
                 logging.info(f"   Serialized successfully: {len(json_str)} chars")
             except (TypeError, ValueError) as e:
-                logging.error(f"❌ Cannot serialize data for {file_path.name}: {e}")
+                logging.error(f"? Cannot serialize data for {file_path.name}: {e}")
                 logging.error(f"   Data type: {type(data)}")
                 logging.error(f"   First key sample: {list(data.keys())[0] if data else 'N/A'}")
                 if data:
@@ -583,18 +587,18 @@ class WebsiteMonitor:
             
             # Verificar se salvou corretamente
             file_size = file_path.stat().st_size
-            logging.info(f"   ✅ Saved {file_path.name} ({file_size} bytes)")
+            logging.info(f"   ? Saved {file_path.name} ({file_size} bytes)")
             
             # Ler de volta para confirmar
             with open(file_path, 'r', encoding='utf-8') as f:
                 verified = json.load(f)
-                logging.info(f"   ✅ Verified: {len(verified)} entries read back")
+                logging.info(f"   ? Verified: {len(verified)} entries read back")
             
         except IOError as e:
-            logging.error(f"❌ IO Error saving {file_path}: {e}")
+            logging.error(f"? IO Error saving {file_path}: {e}")
             raise
         except Exception as e:
-            logging.error(f"❌ Unexpected error saving {file_path}: {e}")
+            logging.error(f"? Unexpected error saving {file_path}: {e}")
             import traceback
             logging.error(traceback.format_exc())
             raise
@@ -820,7 +824,7 @@ class WebsiteMonitor:
     def detect_change(self, url: str, new_content: str) -> Optional[ChangeDetection]:
         """Detecta mudanças com validação adicional para evitar falsos positivos"""
         if not new_content or len(new_content) < self.config['MIN_CONTENT_LENGTH']:
-            logging.warning(f"⚠️ Content too short for {url}: {len(new_content)} chars")
+            logging.warning(f"?? Content too short for {url}: {len(new_content)} chars")
             return None
         
         new_hash = self.calculate_content_hash(new_content)
@@ -837,7 +841,7 @@ class WebsiteMonitor:
             self._content_updated = True
             
             # DEBUG CRÍTICO
-            logging.info(f"✓ First check for {url}, storing initial hash")
+            logging.info(f"? First check for {url}, storing initial hash")
             logging.info(f"   Content stored: {len(new_content)} chars")
             logging.info(f"   Content preview: {new_content[:100]}...")
             logging.info(f"   Total in memory now: {len(self.last_contents)} contents")
@@ -846,20 +850,20 @@ class WebsiteMonitor:
                 
         # Se hash é idêntico, sem mudança
         if new_hash == old_hash:
-            logging.debug(f"✓ No hash change for {url}")
+            logging.debug(f"? No hash change for {url}")
             return None
         
         # Hash diferente - verificar se mudança é significativa
-        logging.info(f"⚠️ Hash changed for {url}, validating significance...")
+        logging.info(f"?? Hash changed for {url}, validating significance...")
         
         # Validação 1: Verificar similaridade de conteúdo
         similarity = self._calculate_similarity(old_content, new_content)
-        logging.info(f"   📊 Similarity: {similarity:.2%}")
+        logging.info(f"   ?? Similarity: {similarity:.2%}")
         
         # Se similaridade é muito alta, provavelmente é falso positivo
         similarity_threshold = self.config.get('MIN_SIMILARITY_THRESHOLD', 0.95)
         if similarity > similarity_threshold:
-            logging.info(f"   → Content too similar ({similarity:.2%} > {similarity_threshold:.2%}), ignoring change")
+            logging.info(f"   ? Content too similar ({similarity:.2%} > {similarity_threshold:.2%}), ignoring change")
             self.stats['false_positives_avoided'] += 1
             # Atualizar hash mas não notificar
             self.last_hashes[url] = new_hash
@@ -868,26 +872,26 @@ class WebsiteMonitor:
         
         # Validação 2: Verificar se conteúdo novo é válido
         if len(new_content) < len(old_content) * 0.3:
-            logging.warning(f"   → New content is too short (possible error), ignoring")
+            logging.warning(f"   ? New content is too short (possible error), ignoring")
             return None
         
         # Validação 3: Verificar diferença absoluta de tamanho
         size_diff = abs(len(new_content) - len(old_content))
         size_ratio = size_diff / len(old_content) if old_content else 1
         
-        logging.info(f"   📏 Size change: {size_diff} chars ({size_ratio:.2%})")
+        logging.info(f"   ?? Size change: {size_diff} chars ({size_ratio:.2%})")
         
         # Se mudança é menor que threshold do tamanho, pode ser ruído
         size_threshold = self.config.get('MIN_SIZE_CHANGE_RATIO', 0.02)
         if size_ratio < size_threshold and similarity > 0.90:
-            logging.info(f"   → Change too small ({size_ratio:.2%} < {size_threshold:.2%}), ignoring")
+            logging.info(f"   ? Change too small ({size_ratio:.2%} < {size_threshold:.2%}), ignoring")
             self.stats['false_positives_avoided'] += 1
             self.last_hashes[url] = new_hash
             self._content_updated = True
             return None
         
         # Mudança é significativa - gerar notificação
-        logging.info(f"   ✅ Significant change confirmed!")
+        logging.info(f"   ? Significant change confirmed!")
         
         diff_content = self._generate_diff(old_content, new_content)
         
@@ -902,7 +906,7 @@ class WebsiteMonitor:
             change_ratio=1.0 - similarity,
             is_significant=True,
             diff_content=diff_content,
-            timestamp=datetime.now()
+            timestamp=datetime.now(LOCAL_TZ)
         )
     
     def _calculate_similarity(self, text1: str, text2: str) -> float:
@@ -930,15 +934,15 @@ class WebsiteMonitor:
             for tag, i1, i2, j1, j2 in matcher.get_opcodes():
                 if tag == 'delete':
                     for line in old_lines[i1:i2]:
-                        diff_lines.append(f"❌ {line}")
+                        diff_lines.append(f"? {line}")
                 elif tag == 'insert':
                     for line in new_lines[j1:j2]:
-                        diff_lines.append(f"✅ {line}")
+                        diff_lines.append(f"? {line}")
                 elif tag == 'replace':
                     for line in old_lines[i1:i2]:
-                        diff_lines.append(f"❌ {line}")
+                        diff_lines.append(f"? {line}")
                     for line in new_lines[j1:j2]:
-                        diff_lines.append(f"✅ {line}")
+                        diff_lines.append(f"? {line}")
             
             return '\n'.join(diff_lines[:100])
         
@@ -948,10 +952,10 @@ class WebsiteMonitor:
     
     def monitor_sites(self):
         """Executa monitoramento de todos os sites"""
-        logging.info("🚀 Starting website monitoring (anti false positives)...")
-        logging.info(f"📊 Monitoring {len(self.config['URLS'])} sites")
-        logging.info(f"⚙️  Similarity threshold: {self.config.get('MIN_SIMILARITY_THRESHOLD', 0.95):.2%}")
-        logging.info(f"⚙️  Size change threshold: {self.config.get('MIN_SIZE_CHANGE_RATIO', 0.02):.2%}")
+        logging.info("?? Starting website monitoring (anti false positives)...")
+        logging.info(f"?? Monitoring {len(self.config['URLS'])} sites")
+        logging.info(f"??  Similarity threshold: {self.config.get('MIN_SIMILARITY_THRESHOLD', 0.95):.2%}")
+        logging.info(f"??  Size change threshold: {self.config.get('MIN_SIZE_CHANGE_RATIO', 0.02):.2%}")
         
         try:
             # Usar ThreadPoolExecutor para paralelização
@@ -990,7 +994,7 @@ class WebsiteMonitor:
             self._save_data()
 
             logging.info("="*60)
-            logging.info("🔍 FINAL VERIFICATION BEFORE EXIT")
+            logging.info("?? FINAL VERIFICATION BEFORE EXIT")
             logging.info(f"   Contents in memory: {len(self.last_contents)}")
             
             if self.content_file.exists():
@@ -998,9 +1002,9 @@ class WebsiteMonitor:
                     final_check = json.load(f)
                     logging.info(f"   Contents in file: {len(final_check)}")
                     if len(final_check) != len(self.last_contents):
-                        logging.error(f"   ❌ MISMATCH! Memory={len(self.last_contents)}, File={len(final_check)}")
+                        logging.error(f"   ? MISMATCH! Memory={len(self.last_contents)}, File={len(final_check)}")
             else:
-                logging.error(f"   ❌ File {self.content_file} doesn't exist!")
+                logging.error(f"   ? File {self.content_file} doesn't exist!")
             
             logging.info("="*60)
             
@@ -1008,51 +1012,51 @@ class WebsiteMonitor:
             self._log_statistics()
         
         except KeyboardInterrupt:
-            logging.info("ℹ️ Monitoring stopped by user")
+            logging.info("?? Monitoring stopped by user")
         except Exception as e:
-            logging.error(f"❌ Monitoring error: {e}")
+            logging.error(f"? Monitoring error: {e}")
             self.stats['errors'] += 1
     
     def monitor_single_site(self, url: str) -> Optional[ChangeDetection]:
         """Monitora um site específico"""
-        logging.info(f"🔍 Checking {url}")
+        logging.info(f"?? Checking {url}")
         
         try:
             # Obter conteúdo
             result = self.get_page_content(url)
             
             if not result.success:
-                logging.warning(f"⚠️ Failed to fetch {url}: {result.error}")
+                logging.warning(f"?? Failed to fetch {url}: {result.error}")
                 return None
             
             # Extrair conteúdo relevante
             relevant_content = self.extract_relevant_content(url, result.content)
             
             if not relevant_content:
-                logging.warning(f"⚠️ No relevant content extracted from {url}")
+                logging.warning(f"?? No relevant content extracted from {url}")
                 return None
             
-            logging.debug(f"   📝 Extracted {len(relevant_content)} chars")
+            logging.debug(f"   ?? Extracted {len(relevant_content)} chars")
             
             # Detectar mudanças
             change = self.detect_change(url, relevant_content)
             
             if change:
-                logging.info(f"🔥 Significant change detected in {url}")
+                logging.info(f"?? Significant change detected in {url}")
                 return change
             else:
-                logging.info(f"✅ No significant changes in {url}")
+                logging.info(f"? No significant changes in {url}")
                 return None
         
         except Exception as e:
-            logging.error(f"❌ Error monitoring {url}: {e}")
+            logging.error(f"? Error monitoring {url}: {e}")
             return None
     
     def _save_data(self):
         """Salva dados de hash e conteúdo"""
         try:
             logging.info("="*60)
-            logging.info("📊 SAVING DATA - START")
+            logging.info("?? SAVING DATA - START")
             logging.info(f"   Hashes in memory: {len(self.last_hashes)}")
             logging.info(f"   Contents in memory: {len(self.last_contents)}")
             
@@ -1062,61 +1066,61 @@ class WebsiteMonitor:
                     content_len = len(self.last_contents[url])
                     logging.info(f"      [{i+1}] {url}: {content_len} chars")
             else:
-                logging.error("   ⚠️ WARNING: last_contents is EMPTY!")
+                logging.error("   ?? WARNING: last_contents is EMPTY!")
             
             # Salvar hashes
-            logging.info(f"🔍 Saving hashes to {self.hash_file}...")
+            logging.info(f"?? Saving hashes to {self.hash_file}...")
             self._save_json_file(self.hash_file, self.last_hashes)
             
             # Salvar contents
-            logging.info(f"🔍 Saving contents to {self.content_file}...")
+            logging.info(f"?? Saving contents to {self.content_file}...")
             self._save_json_file(self.content_file, self.last_contents)
             
             # Verificar após salvar
-            logging.info("🔍 Verifying saved files...")
+            logging.info("?? Verifying saved files...")
             
             if self.hash_file.exists():
                 size = self.hash_file.stat().st_size
-                logging.info(f"   ✅ {self.hash_file.name}: {size} bytes")
+                logging.info(f"   ? {self.hash_file.name}: {size} bytes")
             else:
-                logging.error(f"   ❌ {self.hash_file.name}: FILE NOT FOUND")
+                logging.error(f"   ? {self.hash_file.name}: FILE NOT FOUND")
             
             if self.content_file.exists():
                 size = self.content_file.stat().st_size
-                logging.info(f"   ✅ {self.content_file.name}: {size} bytes")
+                logging.info(f"   ? {self.content_file.name}: {size} bytes")
                 
                 # Ler de volta
                 with open(self.content_file, 'r') as f:
                     saved_data = json.load(f)
-                    logging.info(f"   📖 Read back: {len(saved_data)} entries")
+                    logging.info(f"   ?? Read back: {len(saved_data)} entries")
                     
                     if len(saved_data) == 0 and len(self.last_contents) > 0:
-                        logging.error("   ❌ CRITICAL: File is empty but memory had data!")
+                        logging.error("   ? CRITICAL: File is empty but memory had data!")
                         logging.error(f"   Memory had: {list(self.last_contents.keys())[:3]}")
             else:
-                logging.error(f"   ❌ {self.content_file.name}: FILE NOT FOUND")
+                logging.error(f"   ? {self.content_file.name}: FILE NOT FOUND")
             
-            logging.info("📊 SAVING DATA - END")
+            logging.info("?? SAVING DATA - END")
             logging.info("="*60)
         
         except Exception as e:
-            logging.error(f"❌ Error in _save_data: {e}")
+            logging.error(f"? Error in _save_data: {e}")
             import traceback
             logging.error(traceback.format_exc())
     
     def _log_statistics(self):
         """Log de estatísticas da execução"""
-        duration = datetime.now() - self.stats['start_time']
+        duration = datetime.now(LOCAL_TZ) - self.stats['start_time']
         
         logging.info("")
         logging.info("=" * 60)
-        logging.info("📈 Monitoring Statistics:")
-        logging.info(f"   ⏱️  Duration: {duration}")
-        logging.info(f"   🌐 Sites checked: {self.stats['sites_checked']}")
-        logging.info(f"   🔥 Significant changes detected: {self.stats['changes_detected']}")
-        logging.info(f"   🛡️  False positives avoided: {self.stats['false_positives_avoided']}")
-        logging.info(f"   📧 Emails sent: {self.stats['emails_sent']}")
-        logging.info(f"   ❌ Errors: {self.stats['errors']}")
+        logging.info("?? Monitoring Statistics:")
+        logging.info(f"   ??  Duration: {duration}")
+        logging.info(f"   ?? Sites checked: {self.stats['sites_checked']}")
+        logging.info(f"   ?? Significant changes detected: {self.stats['changes_detected']}")
+        logging.info(f"   ???  False positives avoided: {self.stats['false_positives_avoided']}")
+        logging.info(f"   ?? Emails sent: {self.stats['emails_sent']}")
+        logging.info(f"   ? Errors: {self.stats['errors']}")
         logging.info("=" * 60)
 
 
@@ -1131,19 +1135,19 @@ def main():
             for file_path in [config['HASH_FILE'], config.get('CONTENT_FILE', '')]:
                 if file_path and Path(file_path).exists():
                     Path(file_path).unlink()
-                    logging.info(f"🗑️ Deleted {file_path}")
+                    logging.info(f"??? Deleted {file_path}")
         
         # Inicializar e executar monitor
         monitor = WebsiteMonitor(config)
         monitor.monitor_sites()
     
     except (FileNotFoundError, ValueError, KeyError, IOError) as e:
-        logging.critical(f"❌ Configuration error: {e}")
+        logging.critical(f"? Configuration error: {e}")
         sys.exit(1)
     except KeyboardInterrupt:
-        logging.info("ℹ️ Monitoring stopped by user")
+        logging.info("?? Monitoring stopped by user")
     except Exception as e:
-        logging.critical(f"❌ Unexpected error: {e}")
+        logging.critical(f"? Unexpected error: {e}")
         sys.exit(1)
 
 
