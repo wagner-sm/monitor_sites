@@ -22,6 +22,9 @@ from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+from email.header import Header
+from email.utils import formataddr
+
 
 LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 
@@ -336,36 +339,73 @@ class EmailNotifier:
             return False
     
     def _send_email(self, change: ChangeDetection) -> bool:
-        """Envia email usando Gmail"""
-        smtp_server = 'smtp.gmail.com'
+        """Envia email com encoding UTF-8 garantido (GitHub Actions safe)"""
+
+        smtp_server = "smtp.gmail.com"
         smtp_port = 587
-        
-        smtp_user = os.getenv('GMAIL_USER', self.config.get('GMAIL_USER'))
-        smtp_password = os.getenv('GMAIL_APP_PASSWORD', self.config.get('GMAIL_APP_PASSWORD'))
-        
+
+        smtp_user = os.getenv("GMAIL_USER", self.config.get("GMAIL_USER"))
+        smtp_password = os.getenv("GMAIL_APP_PASSWORD", self.config.get("GMAIL_APP_PASSWORD"))
+
         if not smtp_user or not smtp_password:
             logging.error("Gmail credentials not provided")
             return False
-        
-        # Criar mensagem
-        msg = MIMEMultipart('alternative')
-        msg['From'] = smtp_user
-        msg['To'] = ", ".join(self.config["EMAIL_RECIPIENTS"])
-        msg['Subject'] = f"?? Mudança Detectada: {change.url}"
-        
-        # Gerar conteúdo HTML
-        html_content = self._generate_html_content(change)
-        msg.attach(MIMEText(html_content, 'html', 'utf-8'))
-        
-        # Enviar
+
         try:
+            # =========================
+            # Criar mensagem base
+            # =========================
+            msg = MIMEMultipart("alternative")
+
+            # From com nome seguro (UTF-8)
+            msg["From"] = formataddr((
+                str(Header("Website Monitor", "utf-8")),
+                smtp_user
+            ))
+
+            # To
+            recipients = self.config["EMAIL_RECIPIENTS"]
+            msg["To"] = ", ".join(recipients)
+
+            # Subject corretamente codificado (ESSENCIAL)
+            subject = f"🚨 Mudança Detectada no Site"
+            msg["Subject"] = Header(subject, "utf-8")
+
+            # =========================
+            # Corpo HTML
+            # =========================
+            html_content = self._generate_html_content(change)
+
+            html_part = MIMEText(
+                html_content,
+                "html",
+                "utf-8"
+            )
+
+            msg.attach(html_part)
+
+            # =========================
+            # Envio SMTP
+            # =========================
             with smtplib.SMTP(smtp_server, smtp_port) as server:
+                server.ehlo()
                 server.starttls()
+                server.ehlo()
                 server.login(smtp_user, smtp_password)
-                server.sendmail(smtp_user, self.config["EMAIL_RECIPIENTS"], msg.as_string())
+                server.sendmail(
+                    smtp_user,
+                    recipients,
+                    msg.as_string()
+                )
+
             return True
+
+        except smtplib.SMTPException as e:
+            logging.error(f"SMTP error while sending email: {e}")
+            return False
+
         except Exception as e:
-            logging.error(f"SMTP error: {e}")
+            logging.error(f"Unexpected error while sending email: {e}")
             return False
     
     def _generate_html_content(self, change: ChangeDetection) -> str:
