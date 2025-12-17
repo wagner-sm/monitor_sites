@@ -11,6 +11,10 @@ permissions:
 jobs:
   monitor:
     runs-on: ubuntu-latest
+    env:
+      LANG: pt_BR.UTF-8
+      LC_ALL: pt_BR.UTF-8
+      PYTHONUTF8: "1"
     
     steps:
       - name: Checkout repository
@@ -103,7 +107,7 @@ jobs:
         run: |
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
-          git commit -m "?? Auto-update: hashes and content [$(date -u +'%Y-%m-%d %H:%M:%S UTC')]"
+          git commit -m "Auto-update: hashes and content [$(date -u +'%Y-%m-%d %H:%M:%S UTC')]"
           git push
           echo "? Changes committed and pushed successfully"
       
