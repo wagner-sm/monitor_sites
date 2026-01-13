@@ -15,7 +15,8 @@
 		"https://www.marcelomartinsfotografia.com.br/portfolio",
 		"https://gataegatas.alboompro.com/portfolio",
 		"https://www.flormeninna.com/portfolio",
-	    "https://illuminateboudoir.com/blog"
+	    "https://illuminateboudoir.com/blog",
+	    "https://www.urbs.curitiba.pr.gov.br/transporte/boletim-de-transportes"
   ],
   "EMAIL_RECIPIENTS": [
     "wsmmetal@outlook.com"
@@ -30,5 +31,6 @@
   "SPECIAL_DOMAINS": ["portfolio"]
 
 }
+
 
 
