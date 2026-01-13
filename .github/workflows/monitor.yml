@@ -2,7 +2,7 @@ name: Website Monitor
 
 on:
   schedule:
-    - cron: "*/30 * * * *"  # A cada 30 minutos
+    - cron: '0 */1 * * *'
   workflow_dispatch:  # Permite execução manual
 
 permissions:
