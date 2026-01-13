@@ -21,6 +21,7 @@
   "EMAIL_RECIPIENTS": [
     "wsmmetal@outlook.com"
   ],
+  "USE_ROTATING_USER_AGENTS": true,
   "HASH_FILE": "data/hashes.json",  
   "CONTENT_FILE":"data/last_contents.json",
   "MAX_RETRIES": 3,
@@ -31,6 +32,7 @@
   "SPECIAL_DOMAINS": ["portfolio"]
 
 }
+
 
 
 
