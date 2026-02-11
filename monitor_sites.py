@@ -365,44 +365,38 @@ class WebsiteMonitor:
             return
         
         # Calcular hash
-        new_hash = hashlib.sha256(content.encode()).hexdigest()
         old_hash = self.last_hashes.get(url, "")
-        
-        # Armazenar conteúdo
-        self.last_contents[url] = content
-        
+        old_content = self.last_contents.get(url, "")
+
+        new_hash = hashlib.sha256(content.encode()).hexdigest()
+
         # Primeira verificação
         if not old_hash:
             self.last_hashes[url] = new_hash
+            self.last_contents[url] = content
             logging.info(f"📝 Primeira verificação de {url}")
             return
-        
-        # Sem mudança
+
         if new_hash == old_hash:
             logging.info(f"✓ Sem mudanças em {url}")
             return
-        
-        # Validar mudança significativa
-        old_content = self.last_contents.get(url, "")
-        if old_content:
-            from difflib import SequenceMatcher
-            similarity = SequenceMatcher(None, old_content, content).ratio()
-            
-            if similarity > self.config['MIN_SIMILARITY_THRESHOLD']:
-                logging.info(f"⚠️ Mudança não significativa ({similarity:.2%})")
-                self.last_hashes[url] = new_hash
-                return
-        
-        # Mudança detectada
-        logging.info(f"🔔 Mudança significativa em {url}")
-        
-        # Gerar diff
+
+        # Comparar similaridade
+        from difflib import SequenceMatcher
+        similarity = SequenceMatcher(None, old_content, content).ratio()
+
+        if similarity > self.config['MIN_SIMILARITY_THRESHOLD']:
+            logging.info(f"⚠️ Mudança não significativa ({similarity:.2%})")
+            self.last_hashes[url] = new_hash
+            self.last_contents[url] = content
+            return
+
+        # 🔔 Mudança real detectada
         diff = self._generate_diff(old_content, content)
-        
-        # Atualizar hash
+
         self.last_hashes[url] = new_hash
-        
-        # Enviar notificação
+        self.last_contents[url] = content
+
         self.notifier.send_notification(url, old_hash, new_hash, diff)
     
     def _generate_diff(self, old: str, new: str) -> str:
