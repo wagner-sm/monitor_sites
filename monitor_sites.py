@@ -18,6 +18,7 @@ import smtplib
 from email.mime.multipart import MIMEMultipart
 from email.mime.text import MIMEText
 from zoneinfo import ZoneInfo
+from difflib import SequenceMatcher
 
 LOCAL_TZ = ZoneInfo("America/Sao_Paulo")
 
@@ -61,8 +62,7 @@ class ConfigManager:
         config.setdefault('HASH_FILE', 'last_hashes.json')
         config.setdefault('CONTENT_FILE', 'last_contents.json')
         config.setdefault('REQUEST_TIMEOUT', 30)
-        config.setdefault('MIN_CONTENT_LENGTH', 100)
-        config.setdefault('MIN_SIMILARITY_THRESHOLD', 0.95)
+        config.setdefault('MIN_CONTENT_LENGTH', 100)        
         config.setdefault('SPECIAL_DOMAINS', [])
         config.setdefault('LOG_LEVEL', 'INFO')
         
@@ -350,65 +350,64 @@ class WebsiteMonitor:
             return ""
     
     def monitor_site(self, url: str):
-        """Monitora um site específico"""
         logging.info(f"🔍 Verificando {url}")
-        
-        # Buscar conteúdo
+
         html = self.get_page_content(url)
         if not html:
             return
-        
-        # Extrair conteúdo relevante
+
         content = self.extract_content(url, html)
         if not content or len(content) < self.config['MIN_CONTENT_LENGTH']:
             logging.warning(f"⚠️ Conteúdo insuficiente para {url}")
             return
-        
-        # Calcular hash
-        old_hash = self.last_hashes.get(url, "")
-        old_content = self.last_contents.get(url, "")
 
         new_hash = hashlib.sha256(content.encode()).hexdigest()
+        old_hash = self.last_hashes.get(url)
 
-        # Primeira verificação
+        # Primeira execução
         if not old_hash:
+            logging.info(f"📝 Primeira verificação de {url}")
             self.last_hashes[url] = new_hash
             self.last_contents[url] = content
-            logging.info(f"📝 Primeira verificação de {url}")
             return
 
+        # Se não mudou
         if new_hash == old_hash:
             logging.info(f"✓ Sem mudanças em {url}")
             return
 
-        # Comparar similaridade
-        from difflib import SequenceMatcher
-        similarity = SequenceMatcher(None, old_content, content).ratio()
+        # 🔔 Mudou → sempre envia email
+        logging.info(f"🔔 Mudança detectada em {url}")
 
-        if similarity > self.config['MIN_SIMILARITY_THRESHOLD']:
-            logging.info(f"⚠️ Mudança não significativa ({similarity:.2%})")
-            self.last_hashes[url] = new_hash
-            self.last_contents[url] = content
-            return
+        diff = self._generate_diff(
+            self.last_contents.get(url, ""),
+            content
+        )
 
-        # 🔔 Mudança real detectada
-        diff = self._generate_diff(old_content, content)
+        email_sent = self.notifier.send_notification(
+            url,
+            old_hash,
+            new_hash,
+            diff
+        )
 
+        if email_sent:
+            logging.info("📧 Email enviado com sucesso")
+        else:
+            logging.warning("⚠️ Mudança detectada mas email não enviado")
+
+        # Atualiza dados sempre
         self.last_hashes[url] = new_hash
         self.last_contents[url] = content
 
-        self.notifier.send_notification(url, old_hash, new_hash, diff)
     
     def _generate_diff(self, old: str, new: str) -> str:
-        """Gera diff entre conteúdos"""
-        from difflib import SequenceMatcher
-        
         old_lines = old.split('\n')[:30]
         new_lines = new.split('\n')[:30]
-        
+
         diff = []
         matcher = SequenceMatcher(None, old_lines, new_lines)
-        
+
         for tag, i1, i2, j1, j2 in matcher.get_opcodes():
             if tag == 'delete':
                 for line in old_lines[i1:i2]:
@@ -421,8 +420,9 @@ class WebsiteMonitor:
                     diff.append(f"- {line}")
                 for line in new_lines[j1:j2]:
                     diff.append(f"+ {line}")
-        
+
         return '\n'.join(diff[:100])
+
     
     def run(self):
         """Executa monitoramento"""
